@@ -88,58 +88,68 @@ def add_data_for_opening(image_to_draw_on, data, font_dir):
     return image_to_draw_on
 
 def paste_emoji_image(base_img, emoji_char, pos, size, emoji_dir):
-    # Lấy mã Unicode hex (VD: 😀 => 1f600.png)
+    """Dán emoji PNG vào vị trí (pos) với kích thước (size)."""
+    # Chuyển emoji thành mã hex (VD: 😀 => 1f600.png)
     codepoints = "-".join(f"{ord(c):x}" for c in emoji_char)
     emoji_file = os.path.join(emoji_dir, f"{codepoints}.png")
+    
     if not os.path.exists(emoji_file):
         print(f"⚠️ Không tìm thấy emoji '{emoji_char}' ({emoji_file})")
         return base_img
+    
     emoji_img = Image.open(emoji_file).convert("RGBA")
     emoji_img = emoji_img.resize((size, size), Image.LANCZOS)
+    
     base_img.paste(emoji_img, pos, emoji_img)
     return base_img
+
 
 def add_data_for_definition(image_to_draw_on, data, font_dir):
     definition_text = data.get('definition', '')
     term = data.get('term', '')
-    font_for_term = load_font(font_dir, "NotoSans-Bold.ttf", 120)
+    
+    font_for_term = load_font(font_dir, "NotoSans-Bold.ttf", 100)
     font_for_definition = load_font(font_dir, "NotoSans-Regular.ttf", 60)
     draw = ImageDraw.Draw(image_to_draw_on)
 
-    # Emoji màu từ Twemoji
+    # ===== Emoji settings =====
     emoji_char = data.get('emoji', '😀')
-    emoji_dir = "emojis"  # thư mục chứa PNG emoji
-    image_to_draw_on = paste_emoji_image(image_to_draw_on, emoji_char, (500, int(image_to_draw_on.height/2 - 200)), 200, emoji_dir)
+    emoji_dir = "emojis"  # Thư mục chứa PNG emoji
+    emoji_size = 300      # Kích thước emoji
+    emoji_x = 1900         # Vị trí X mặc định
+    emoji_y = int(image_to_draw_on.height / 2 - 300)  # Vị trí Y mặc định
+    image_to_draw_on = paste_emoji_image(image_to_draw_on, emoji_char, (emoji_x, emoji_y), emoji_size, emoji_dir)
 
-    # Term
+    # ===== Term =====
     term_x = 250
-    term_y = 200
+    term_y = 300
     draw.text((term_x, term_y), term, fill="black", font=font_for_term, anchor="lt")
 
-    # Definition
+    # ===== Definition =====
     def_x = 250
-    def_y = 400
+    def_y = 500
     max_width = 1400
     def_lines, _ = wrap_text_to_fit_width(definition_text, font_for_definition, max_width)
     line_height = draw.textbbox((0, 0), "Aa", font=font_for_definition)[3] * 1.3
+    
     for i, line in enumerate(def_lines):
         line_y = def_y + (i * line_height)
         draw.text((def_x, line_y), line, fill="black", font=font_for_definition, anchor="lt")
+    
     return image_to_draw_on
+
 
 # ==============================================================================
 # --- CHƯƠNG TRÌNH CHÍNH ---
 # ==============================================================================
 
-def process_slide(template_file, data, template_dir, font_dir, output_dir):
+def process_slide(template_file, data, template_dir, font_dir, output_dir, random_hue=random.randint(0, 360)):
     template_path = os.path.join(template_dir, template_file)
     try:
         template_img = Image.open(template_path).convert('RGBA')
     except FileNotFoundError:
         print(f"❌ Không tìm thấy template '{template_path}'")
         return False
-
-    random_hue = random.randint(0, 360)
     image_with_background = apply_background(template_img, random_hue)
 
     template_name = os.path.splitext(template_file)[0]
@@ -179,8 +189,9 @@ if __name__ == "__main__":
     ]
 
     successful_slides = 0
+    random_hue = random.randint(0, 360)
     for slide_config in slides_data:
-        if process_slide(slide_config["template"], slide_config["data"], TEMPLATE_DIR, FONT_DIR, OUTPUT_DIR):
+        if process_slide(slide_config["template"], slide_config["data"], TEMPLATE_DIR, FONT_DIR, OUTPUT_DIR, random_hue):
             successful_slides += 1
 
     print(f"Hoàn tất: {successful_slides}/{len(slides_data)} slide.")
