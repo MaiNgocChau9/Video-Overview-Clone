@@ -1,9 +1,9 @@
 import os
 import random
 import colorsys
-import re
 from PIL import Image, ImageDraw, ImageFont
 import textwrap
+import re
 
 # ==============================================================================
 # --- HÀM TIỆN ÍCH ---
@@ -32,148 +32,95 @@ def load_font(font_dir, font_name, size):
         print(f"⚠️ Không tìm thấy font '{font_name}', dùng font mặc định.")
         return ImageFont.load_default()
 
-def parse_markdown_text(text):
-    """
-    Phân tích text có markdown **bold** và trả về list các phần tử
-    Mỗi phần tử là dict với 'text' và 'is_bold'
-    """
+def parse_markdown_bold(text):
+    """Parse text và tách phần **bold** ra"""
     parts = []
     pattern = r'\*\*(.*?)\*\*'
-    
     last_end = 0
+    
     for match in re.finditer(pattern, text):
-        # Thêm text thường trước match
+        # Thêm text trước phần bold
         if match.start() > last_end:
-            normal_text = text[last_end:match.start()]
-            if normal_text:
-                parts.append({'text': normal_text, 'is_bold': False})
-        
-        # Thêm text in đậm
-        bold_text = match.group(1)
-        parts.append({'text': bold_text, 'is_bold': True})
-        
+            parts.append({'text': text[last_end:match.start()], 'bold': False})
+        # Thêm phần bold
+        parts.append({'text': match.group(1), 'bold': True})
         last_end = match.end()
     
-    # Thêm text còn lại
+    # Thêm phần text còn lại
     if last_end < len(text):
-        remaining_text = text[last_end:]
-        if remaining_text:
-            parts.append({'text': remaining_text, 'is_bold': False})
+        parts.append({'text': text[last_end:], 'bold': False})
     
-    # Nếu không có markdown, trả về toàn bộ text như normal
+    # Nếu không có bold nào, trả về toàn bộ text
     if not parts:
-        parts.append({'text': text, 'is_bold': False})
+        parts = [{'text': text, 'bold': False}]
     
     return parts
 
-def draw_text_with_highlight(draw, x, y, text_parts, font_normal, font_bold, max_width):
-    """
-    Vẽ text với highlight nền vàng cho phần in đậm (theo cụm từ)
-    Trả về chiều cao tổng của text đã vẽ
-    """
-    highlight_color = (240, 209, 0)  # Màu vàng
-    text_color = (0, 0, 0)  # Màu đen
+def draw_rounded_rectangle(draw, coords, fill, radius=15):
+    """Vẽ hình chữ nhật bo góc"""
+    x1, y1, x2, y2 = coords
     
+    # Vẽ hình chữ nhật chính (không có góc)
+    draw.rectangle([x1 + radius, y1, x2 - radius, y2], fill=fill)
+    draw.rectangle([x1, y1 + radius, x2, y2 - radius], fill=fill)
+    
+    # Vẽ 4 góc bo tròn
+    draw.ellipse([x1, y1, x1 + 2*radius, y1 + 2*radius], fill=fill)
+    draw.ellipse([x2 - 2*radius, y1, x2, y1 + 2*radius], fill=fill)
+    draw.ellipse([x1, y2 - 2*radius, x1 + 2*radius, y2], fill=fill)
+    draw.ellipse([x2 - 2*radius, y2 - 2*radius, x2, y2], fill=fill)
+
+def draw_text_with_markdown(draw, position, text, font, text_color="black", bg_color=(255, 235, 59), padding=10, anchor="lt"):
+    """Vẽ text với markdown support - chỉ phần **bold** mới có nền vàng"""
+    parts = parse_markdown_bold(text)
+    x, y = position
     current_x = x
-    current_y = y
-    line_height = max(
-        draw.textbbox((0, 0), "Aa", font=font_normal)[3],
-        draw.textbbox((0, 0), "Aa", font=font_bold)[3]
-    ) * 1.3
     
-    lines = []
-    current_line = []
-    current_line_width = 0
-    
-    # Chia text thành các dòng, nhưng giữ nguyên cụm bold
-    for part in text_parts:
-        font = font_bold if part['is_bold'] else font_normal
-        part_text = part['text'].strip()
+    for part in parts:
+        part_text = part['text']
         
-        if part['is_bold']:
-            # Với text bold, coi như một khối duy nhất
-            part_width = draw.textbbox((0, 0), part_text, font=font)[2]
+        if part['bold']:
+            # Tính kích thước text
+            bbox = draw.textbbox((current_x, y), part_text, font=font, anchor=anchor)
             
-            if current_line_width + part_width > max_width and current_line:
-                lines.append(current_line)
-                current_line = []
-                current_line_width = 0
+            # Vẽ background màu vàng cho phần bold
+            bg_x1 = bbox[0] - padding
+            bg_y1 = bbox[1] - padding
+            bg_x2 = bbox[2] + padding
+            bg_y2 = bbox[3] + padding
             
-            current_line.append({
-                'text': part_text,
-                'is_bold': True,
-                'width': part_width
-            })
-            current_line_width += part_width
-        else:
-            # Với text thường, chia theo từ
-            words = part_text.split()
-            for word in words:
-                word_width = draw.textbbox((0, 0), word + " ", font=font)[2]
-                
-                if current_line_width + word_width > max_width and current_line:
-                    lines.append(current_line)
-                    current_line = []
-                    current_line_width = 0
-                
-                current_line.append({
-                    'text': word + " ",
-                    'is_bold': False,
-                    'width': word_width
-                })
-                current_line_width += word_width
-    
-    if current_line:
-        lines.append(current_line)
-    
-    # Vẽ từng dòng
-    total_height = 0
-    for line in lines:
-        line_x = current_x
+            draw_rounded_rectangle(draw, [bg_x1, bg_y1, bg_x2, bg_y2], fill=bg_color, radius=10)
         
-        for part_info in line:
-            font = font_bold if part_info['is_bold'] else font_normal
-            part_text = part_info['text'].rstrip()
-            
-            if part_info['is_bold']:
-                # Tính kích thước để vẽ nền cho cả cụm từ
-                text_bbox = draw.textbbox((0, 0), part_text, font=font)
-                text_width = text_bbox[2] - text_bbox[0]
-                text_height = text_bbox[3] - text_bbox[1]
-                
-                # Vẽ nền vàng bo tròn cho cả cụm
-                padding = 20
-                highlight_rect = [
-                    line_x - padding,
-                    current_y - padding,
-                    line_x + text_width + padding,
-                    current_y + text_height + padding
-                ]
-                draw.rounded_rectangle(highlight_rect, radius=20, fill=highlight_color)
-            
-            # Vẽ text
-            draw.text((line_x, current_y), part_text, fill=text_color, font=font, anchor="lt")
-            line_x += part_info['width']
+        # Vẽ text (không bold, font vẫn giữ nguyên)
+        draw.text((current_x, y), part_text, fill=text_color, font=font, anchor=anchor)
         
-        current_y += line_height
-        total_height += line_height
-    
-    return total_height
+        # Cập nhật vị trí x cho phần text tiếp theo
+        text_width = draw.textbbox((current_x, y), part_text, font=font, anchor=anchor)[2] - current_x
+        current_x += text_width
 
 def wrap_text_to_fit_width(text, font, max_width):
+    """Wrap text và giữ nguyên markdown"""
     draw_temp = ImageDraw.Draw(Image.new('RGB', (1, 1)))
-    text_width = draw_temp.textbbox((0, 0), text, font=font)[2]
+    
+    # Loại bỏ markdown để tính toán độ rộng
+    clean_text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text_width = draw_temp.textbbox((0, 0), clean_text, font=font)[2]
+    
     if text_width <= max_width:
-        text_height = draw_temp.textbbox((0, 0), text, font=font)[3]
+        text_height = draw_temp.textbbox((0, 0), clean_text, font=font)[3]
         return [text], text_height
     
+    # Split theo từ nhưng giữ markdown
     words = text.split()
     lines = []
     current_line = ""
     
     for word in words:
         test_line = current_line + (" " if current_line else "") + word
-        test_width = draw_temp.textbbox((0, 0), test_line, font=font)[2]
+        # Loại bỏ markdown để test độ rộng
+        clean_test = re.sub(r'\*\*(.*?)\*\*', r'\1', test_line)
+        test_width = draw_temp.textbbox((0, 0), clean_test, font=font)[2]
+        
         if test_width <= max_width:
             current_line = test_line
         else:
@@ -210,9 +157,15 @@ def add_data_for_opening(image_to_draw_on, data, font_dir):
     text_lines, total_height = wrap_text_to_fit_width(title_text, font_for_title, max_width)
     start_y = text_position_y - (total_height / 2)
     line_height = draw.textbbox((0, 0), "Aa", font=font_for_title)[3] * 1.2
+    
     for i, line in enumerate(text_lines):
         line_y = start_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="mt")
+        # Tính toán để căn giữa
+        clean_line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
+        line_width = draw.textbbox((0, 0), clean_line, font=font_for_title)[2]
+        start_x = text_position_x - (line_width / 2)
+        draw_text_with_markdown(draw, (start_x, line_y), line, font_for_title, anchor="lt")
+    
     return image_to_draw_on
 
 def paste_emoji_image(base_img, emoji_char, pos, size, emoji_dir):
@@ -246,16 +199,17 @@ def add_data_for_definition(image_to_draw_on, data, font_dir):
 
     term_x = 250
     term_y = 300
-    draw.text((term_x, term_y), term, fill="black", font=font_for_term, anchor="lt")
+    draw_text_with_markdown(draw, (term_x, term_y), term, font_for_term, anchor="lt")
 
     def_x = 250
     def_y = 500
     max_width = 1400
+    def_lines, _ = wrap_text_to_fit_width(definition_text, font_for_definition, max_width)
+    line_height = draw.textbbox((0, 0), "Aa", font=font_for_definition)[3] * 1.3
     
-    # Xử lý markdown trong definition
-    text_parts = parse_markdown_text(definition_text)
-    font_bold = load_font(font_dir, "NotoSans-Bold.ttf", 60)
-    draw_text_with_highlight(draw, def_x, def_y, text_parts, font_for_definition, font_bold, max_width)
+    for i, line in enumerate(def_lines):
+        line_y = def_y + (i * line_height)
+        draw_text_with_markdown(draw, (def_x, line_y), line, font_for_definition, anchor="lt")
     
     return image_to_draw_on
 
@@ -269,9 +223,11 @@ def add_data_for_chapter(image_to_draw_on, data, font_dir):
     text_lines, total_height = wrap_text_to_fit_width(title_text, font_for_title, max_width)
     start_y = text_position_y - (total_height / 2 - 50)
     line_height = draw.textbbox((0, 0), "Aa", font=font_for_title)[3] * 1.2
+    
     for i, line in enumerate(text_lines):
         line_y = start_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="lt")
+        draw_text_with_markdown(draw, (text_position_x, line_y), line, font_for_title, anchor="lt")
+    
     return image_to_draw_on
 
 def add_data_for_quote(image_to_draw_on, data, font_dir):
@@ -284,9 +240,11 @@ def add_data_for_quote(image_to_draw_on, data, font_dir):
     text_lines, total_height = wrap_text_to_fit_width(title_text, font_for_title, max_width)
     start_y = text_position_y
     line_height = draw.textbbox((0, 0), "Aa", font=font_for_title)[3] * 1.2
+    
     for i, line in enumerate(text_lines):
         line_y = start_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="lt")
+        draw_text_with_markdown(draw, (text_position_x, line_y), line, font_for_title, anchor="lt")
+    
     return image_to_draw_on
 
 def add_data_for_question(image_to_draw_on, data, font_dir):
@@ -298,9 +256,15 @@ def add_data_for_question(image_to_draw_on, data, font_dir):
     max_width = 2000
     text_lines,_ = wrap_text_to_fit_width(title_text, font_for_title, max_width)
     line_height = draw.textbbox((0, 0), "Aa", font=font_for_title)[3] * 1.2
+    
     for i, line in enumerate(text_lines):
         line_y = text_position_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="mt")
+        # Tính toán để căn giữa
+        clean_line = re.sub(r'\*\*(.*?)\*\*', r'\1', line)
+        line_width = draw.textbbox((0, 0), clean_line, font=font_for_title)[2]
+        start_x = text_position_x - (line_width / 2)
+        draw_text_with_markdown(draw, (start_x, line_y), line, font_for_title, anchor="lt")
+    
     return image_to_draw_on
 
 def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
@@ -308,7 +272,6 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     right_data = data.get('right', {})
 
     font_for_content = load_font(font_dir, "NotoSans-Regular.ttf", 70)
-    font_for_content_bold = load_font(font_dir, "NotoSans-Bold.ttf", 70)
     draw = ImageDraw.Draw(image_to_draw_on)
 
     # Left side
@@ -324,11 +287,12 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     content_x_left = 200
     content_y_left = 800
     max_width_left = 950
+    content_lines_left, _ = wrap_text_to_fit_width(left_content_text, font_for_content, max_width_left)
+    line_height = draw.textbbox((0, 0), "Aa", font=font_for_content)[3] * 1.3
     
-    # Xử lý markdown cho left content
-    left_text_parts = parse_markdown_text(left_content_text)
-    draw_text_with_highlight(draw, content_x_left, content_y_left, left_text_parts, 
-                           font_for_content, font_for_content_bold, max_width_left)
+    for i, line in enumerate(content_lines_left):
+        line_y = content_y_left + (i * line_height)
+        draw_text_with_markdown(draw, (content_x_left, line_y), line, font_for_content, anchor="lt")
 
     # Right side
     right_emoji_char = right_data.get('emoji', '😀')
@@ -341,11 +305,11 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     content_x_right = 1400
     content_y_right = 800
     max_width_right = 950
+    content_lines_right, _ = wrap_text_to_fit_width(right_content_text, font_for_content, max_width_right)
     
-    # Xử lý markdown cho right content
-    right_text_parts = parse_markdown_text(right_content_text)
-    draw_text_with_highlight(draw, content_x_right, content_y_right, right_text_parts,
-                           font_for_content, font_for_content_bold, max_width_right)
+    for i, line in enumerate(content_lines_right):
+        line_y = content_y_right + (i * line_height)
+        draw_text_with_markdown(draw, (content_x_right, line_y), line, font_for_content, anchor="lt")
 
     return image_to_draw_on
 
@@ -409,39 +373,39 @@ if __name__ == "__main__":
         {
             "template": "opening.png",
             "data": {
-                "title": "Computer Vision Overview",
+                "title": "**Computer Vision** Overview",
             }
         },
         {
             "template": "chapter.png",
             "data": {
-                "title": "Giới thiệu về Computer Vision",
+                "title": "Giới thiệu về **Computer Vision**",
             }
         },
         {
             "template": "definition.png",
             "data": {
                 "emoji": "😀",
-                "term": "Nội dung",
-                "definition": "định nghĩa với **từ khóa quan trọng** và **khái niệm chính**"
+                "term": "**Nội dung**",
+                "definition": "định nghĩa **bla bla** và thêm nội dung"
             }
         },
         {
             "template": "chapter.png",
             "data": {
-                "title": "Các kỹ thuật",
+                "title": "Các **kỹ thuật**",
             }
         },
         {
             "template": "quote.png",
             "data": {
-                "title": "The task is to build a CNN model to classify handwritten images into the digits 0 through 9.",
+                "title": "The task is to build a **CNN model** to classify handwritten images into the **digits 0 through 9**.",
             }
         },
         {
             "template": "question.png",
             "data": {
-                "title": "Làm thế nào để cải thiện độ chính xác của mô hình CNN?",
+                "title": "Làm thế nào để cải thiện **độ chính xác** của mô hình **CNN**?",
             }
         },
         {
@@ -449,11 +413,11 @@ if __name__ == "__main__":
             "data": {
                 "left": {
                     "emoji": "🔢",
-                    "content": "**Vòng lặp for**: Use when the number of repetitions is **known**"
+                    "content": "Vòng lặp **for**: Use when the number of repetitions is **known**"
                 },
                 "right": {
                     "emoji": "🧐",
-                    "content": "**Vòng lặp while**: Use when the number of repetitions is **unknown**"
+                    "content": "Vòng lặp **while**: Use when the number of repetitions is **unknown**"
                 }
             }
         },
