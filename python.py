@@ -176,6 +176,67 @@ def add_data_for_quote(image_to_draw_on, data, font_dir):
         draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="lt")
     return image_to_draw_on
 
+def add_data_for_question(image_to_draw_on, data, font_dir):
+    title_text = data['title']
+    font_for_title = load_font(font_dir, "NotoSans-Bold.ttf", 150)
+    draw = ImageDraw.Draw(image_to_draw_on)
+    text_position_x = image_to_draw_on.width / 2
+    text_position_y = 450
+    max_width = 2000
+    text_lines,_ = wrap_text_to_fit_width(title_text, font_for_title, max_width)
+    line_height = draw.textbbox((0, 0), "Aa", font=font_for_title)[3] * 1.2
+    for i, line in enumerate(text_lines):
+        line_y = text_position_y + (i * line_height)
+        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="mt")
+    return image_to_draw_on
+
+def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
+    left_data = data.get('left', {})
+    right_data = data.get('right', {})
+
+    font_for_content = load_font(font_dir, "NotoSans-Regular.ttf", 70)
+    draw = ImageDraw.Draw(image_to_draw_on)
+
+    # Left side
+    left_emoji_char = left_data.get('emoji', '😀')
+    left_content_text = left_data.get('content', '')
+    
+    emoji_dir = "emojis"
+    emoji_size = 200
+    emoji_x_left = 200
+    emoji_y_left = 500
+    image_to_draw_on = paste_emoji_image(image_to_draw_on, left_emoji_char, (emoji_x_left, emoji_y_left), emoji_size, emoji_dir)
+    
+    content_x_left = 200
+    content_y_left = 800
+    max_width_left = 950
+    content_lines_left, _ = wrap_text_to_fit_width(left_content_text, font_for_content, max_width_left)
+    line_height = draw.textbbox((0, 0), "Aa", font=font_for_content)[3] * 1.3
+    
+    for i, line in enumerate(content_lines_left):
+        line_y = content_y_left + (i * line_height)
+        draw.text((content_x_left, line_y), line, fill="black", font=font_for_content, anchor="lt")
+
+    # Right side
+    right_emoji_char = right_data.get('emoji', '😀')
+    right_content_text = right_data.get('content', '')
+
+    emoji_x_right = 1400
+    emoji_y_right = 500
+    image_to_draw_on = paste_emoji_image(image_to_draw_on, right_emoji_char, (emoji_x_right, emoji_y_right), emoji_size, emoji_dir)
+
+    content_x_right = 1400
+    content_y_right = 800
+    max_width_right = 950
+    content_lines_right, _ = wrap_text_to_fit_width(right_content_text, font_for_content, max_width_right)
+    
+    for i, line in enumerate(content_lines_right):
+        line_y = content_y_right + (i * line_height)
+        draw.text((content_x_right, line_y), line, fill="black", font=font_for_content, anchor="lt")
+
+    return image_to_draw_on
+
+
 # ==============================================================================
 # --- XỬ LÝ SLIDE ---
 # ==============================================================================
@@ -209,6 +270,10 @@ def process_slide(template_file, data, template_dir, font_dir, output_dir, rando
         final_image = add_data_for_chapter(image_with_background, data, font_dir)
     elif template_name_no_ext == "quote":
         final_image = add_data_for_quote(image_with_background, data, font_dir)
+    elif template_name_no_ext == "question":
+        final_image = add_data_for_question(image_with_background, data, font_dir)
+    elif template_name_no_ext == "side_by_side":
+        final_image = add_data_for_side_by_side(image_with_background, data, font_dir)
     else:
         final_image = image_with_background
 
@@ -258,6 +323,25 @@ if __name__ == "__main__":
             "template": "quote.png",
             "data": {
                 "title": "The task is to build a CNN model to classify handwritten images into the digits 0 through 9.",
+            }
+        },
+        {
+            "template": "question.png",
+            "data": {
+                "title": "Làm thế nào để cải thiện độ chính xác của mô hình CNN?",
+            }
+        },
+        {
+            "template": "side_by_side.png",
+            "data": {
+                "left": {
+                    "emoji": "🔢",
+                    "content": "Vòng lặp for: Use when the number of repetitions is known."
+                },
+                "right": {
+                    "emoji": "🧐",
+                    "content": "Vòng lặp while: Use when the number of repetitions is unknown."
+                }
             }
         },
     ]
