@@ -70,18 +70,25 @@ def draw_rounded_rectangle(draw, coords, fill, radius=15):
     draw.ellipse([x1, y2 - 2*radius, x1 + 2*radius, y2], fill=fill)
     draw.ellipse([x2 - 2*radius, y2 - 2*radius, x2, y2], fill=fill)
 
-def draw_text_with_markdown(draw, position, text, font, text_color="black", bg_color=(255, 235, 59), padding=10, anchor="lt"):
+def draw_text_with_markdown(draw, position, text, font, text_color="black", bg_color=(255, 235, 59), padding=10, anchor="lt", y_offset_after_last_bold=10):
     """Vẽ text với markdown support - chỉ phần **bold** mới có nền vàng"""
     parts = parse_markdown_bold(text)
     x, y = position
     current_x = x
+    current_y = y
     
-    for part in parts:
+    # Tìm vị trí của highlight cuối cùng
+    last_bold_index = -1
+    for i, part in enumerate(parts):
+        if part['bold']:
+            last_bold_index = i
+    
+    for i, part in enumerate(parts):
         part_text = part['text']
         
         if part['bold']:
-            # Tính kích thước text
-            bbox = draw.textbbox((current_x, y), part_text, font=font, anchor=anchor)
+            # Tính kích thước text cho background
+            bbox = draw.textbbox((current_x, current_y), part_text, font=font, anchor=anchor)
             
             # Vẽ background màu vàng cho phần bold
             bg_x1 = bbox[0] - padding
@@ -91,12 +98,16 @@ def draw_text_with_markdown(draw, position, text, font, text_color="black", bg_c
             
             draw_rounded_rectangle(draw, [bg_x1, bg_y1, bg_x2, bg_y2], fill=bg_color, radius=10)
         
-        # Vẽ text (không bold, font vẫn giữ nguyên)
-        draw.text((current_x, y), part_text, fill=text_color, font=font, anchor=anchor)
+        # Vẽ text
+        draw.text((current_x, current_y), part_text, fill=text_color, font=font, anchor=anchor)
         
         # Cập nhật vị trí x cho phần text tiếp theo
-        text_width = draw.textbbox((current_x, y), part_text, font=font, anchor=anchor)[2] - current_x
+        text_width = draw.textlength(part_text, font=font) if hasattr(draw, 'textlength') else (draw.textbbox((current_x, current_y), part_text, font=font)[2] - draw.textbbox((current_x, current_y), part_text, font=font)[0])
         current_x += text_width
+        
+        # Nếu đây là highlight cuối cùng, thêm offset Y cho các phần text tiếp theo
+        if part['bold'] and i == last_bold_index:
+            current_y += y_offset_after_last_bold
 
 def wrap_text_to_fit_width(text, font, max_width):
     """Wrap text và giữ nguyên markdown"""
@@ -417,7 +428,7 @@ if __name__ == "__main__":
                 },
                 "right": {
                     "emoji": "🧐",
-                    "content": "Vòng lặp **while**: Use when the number of repetitions is **unknown**"
+                    "content": "Vòng lặp **while**: Use when the number of repetitions is **unknown** now"
                 }
             }
         },
