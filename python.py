@@ -610,6 +610,67 @@ def add_data_for_blank(image_to_draw_on, data, font_dir):
 
     return image_to_draw_on
 
+def add_data_for_text_with_emoji(image_to_draw_on, data, font_dir, emoji_dir="emojis"):
+    """
+    Template: Văn bản ở giữa, emoji ở góc trên trái & dưới phải.
+    - data: {
+        'text': str,
+        'emoji_chars': ['😀', '🔥'] hoặc ['😀'] 
+      }
+    """
+    # Load font
+    font_text_regular = load_font(font_dir, "NotoSans-Regular.ttf", 130)
+    font_text_bold = load_font(font_dir, "NotoSans-Bold.ttf", 130)
+
+    # Emoji chars
+    emoji_chars = data.get("emoji_chars", [])
+    if not isinstance(emoji_chars, list):
+        emoji_chars = [emoji_chars]
+
+    # Nếu chỉ 1 emoji → nhân đôi
+    if len(emoji_chars) == 1:
+        emoji_chars = emoji_chars * 2
+
+    # Size emoji
+    emoji_size = 250
+    margin = 50
+
+    # === Vẽ emoji vào góc ===
+    for idx, char in enumerate(emoji_chars[:2]):
+        # Tạo ảnh tạm để xoay
+        tmp_img = Image.new("RGBA", image_to_draw_on.size, (0, 0, 0, 0))
+        
+        # Chọn vị trí
+        if idx == 0:  # Trái trên
+            pos = (100, 100)
+        else:  # Phải dưới
+            pos = (2200, 1100)
+
+        # Dán emoji vào ảnh tạm
+        paste_emoji_image(tmp_img, char, pos, emoji_size, emoji_dir)
+
+        # Xoay nhẹ
+        angle = 0
+        tmp_img = tmp_img.rotate(angle, resample=Image.BICUBIC)
+
+        # Ghép vào ảnh gốc
+        image_to_draw_on = Image.alpha_composite(image_to_draw_on.convert("RGBA"), tmp_img)
+
+    # === Vẽ text giữa ảnh ===
+    text = data.get("text", "")
+    center_x = 400
+    center_y = 440
+    max_width_text = 1900
+
+    image_to_draw_on, _ = draw_mixed_text_with_markdown(
+        image_to_draw_on, text,
+        center_x, center_y,
+        font_text_regular, font_text_regular, max_width_text,
+        color="black", anchor="lt"
+    )
+
+    return image_to_draw_on
+
 # ==============================================================================
 # --- XỬ LÝ SLIDE ---
 # ==============================================================================
@@ -649,6 +710,8 @@ def process_slide(template_file, data, template_dir, font_dir, output_dir, rando
         final_image = add_data_for_side_by_side(image_with_background, data, font_dir)
     elif template_name_no_ext == "blank":
         final_image = add_data_for_blank(image_with_background, data, font_dir)
+    elif template_name_no_ext == "text_with_emoji":
+        final_image = add_data_for_text_with_emoji(image_with_background, data, font_dir)
     else:
         final_image = image_with_background
 
@@ -730,6 +793,13 @@ if __name__ == "__main__":
                 ]
             }
         },
+        {
+            "template": "text_with_emoji.png",
+            "data": {
+                "text": "Once data is **organized,** it can be visualized. This turns rows of text into a picture that **tells** a story.",
+                "emoji_chars": ["🤖", "😀"]
+            }
+        }
     ]
 
     successful_slides = 0
