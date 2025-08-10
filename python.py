@@ -164,10 +164,10 @@ def wrap_markdown_text_to_fit_width(text, regular_font, bold_font, max_width):
     return lines
 
 def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, color="black", anchor="lt", 
-                      bold_bg_color=(255, 255, 0, 200), border_radius=20):
+                      bold_bg_color=(239, 209, 0, 255), border_radius=20):
     """
     Vẽ text có markdown bold lên image với nền màu vàng cho text bold
-    FIXED: Vẽ background liền nhau cho cả cụm bold
+    FIXED: Xử lý đúng anchor, đặc biệt là "mt" (middle-top) để căn giữa
     """
     lines = wrap_markdown_text_to_fit_width(text, regular_font, bold_font, max_width)
     line_height = max(get_text_height("Aa", regular_font), get_text_height("Aa", bold_font)) * 1.3
@@ -183,9 +183,9 @@ def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, co
         start_y = y - total_height / 2
     
     # Padding cho background
-    bg_padding_x = 12  # Tăng trái phải
-    bg_padding_y_top = 20  # Padding phía trên
-    bg_padding_y_bottom = 0  # Giảm padding phía dưới
+    bg_padding_x = 15
+    bg_padding_y_top = 25
+    bg_padding_y_bottom = 0
     
     # Đảm bảo image ở chế độ RGBA
     if image.mode != 'RGBA':
@@ -194,8 +194,22 @@ def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, co
     draw = ImageDraw.Draw(image)
     
     for line_idx, line in enumerate(lines):
-        current_x = x
         line_y = start_y + (line_idx * line_height)
+        
+        # FIXED: Tính toán vị trí x cho từng dòng dựa trên anchor
+        if anchor == "mt":
+            # Căn giữa: tính tổng width của dòng và bắt đầu từ giữa
+            total_line_width = 0
+            for word, is_bold in line:
+                font_to_use = bold_font if is_bold else regular_font
+                total_line_width += get_text_width(word, font_to_use)
+                if word != line[-1][0]:  # Không phải từ cuối
+                    total_line_width += get_text_width(" ", font_to_use)
+            
+            current_x = x - (total_line_width / 2)  # Bắt đầu từ nửa trái của tổng width
+        else:
+            # Left align
+            current_x = x
         
         # Nhóm các từ liên tiếp cùng định dạng (bold/normal)
         grouped_parts = []
@@ -229,9 +243,9 @@ def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, co
             # Vẽ background cho cả nhóm nếu là bold
             if is_bold:
                 bg_x1 = int(current_x - bg_padding_x)
-                bg_y1 = int(line_y - bg_padding_y_top)  # Dùng padding top
+                bg_y1 = int(line_y - bg_padding_y_top)
                 bg_x2 = int(current_x + group_width + bg_padding_x)
-                bg_y2 = int(line_y + group_height + bg_padding_y_bottom)  # Dùng padding bottom
+                bg_y2 = int(line_y + group_height + bg_padding_y_bottom)
                 
                 # Tạo layer tạm cho background
                 overlay = Image.new('RGBA', image.size, (0, 0, 0, 0))
@@ -245,7 +259,7 @@ def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, co
                 image = Image.alpha_composite(image, overlay)
                 draw = ImageDraw.Draw(image)
             
-            # Vẽ text của nhóm
+            # Vẽ text của nhóm với anchor="lt" vì đã tính toán vị trí x rồi
             draw.text((current_x, line_y), group_text, fill=color, font=font_to_use, anchor="lt")
             current_x += group_width
             
@@ -287,6 +301,38 @@ def wrap_text_to_fit_width(text, font, max_width):
     total_height = len(lines) * line_height * 1.2
     return lines, int(total_height)
 
+def draw_mixed_text_with_markdown(image, text, x, y, regular_font, bold_font, max_width, color="black", anchor="lt"):
+    """
+    Hàm mới: Vẽ text với tự động detect markdown và fallback về text thường
+    FIXED: Xử lý đúng anchor cho cả trường hợp có và không có markdown
+    """
+    # Kiểm tra xem có markdown không
+    if '**' in text:
+        # Có markdown, dùng draw_markdown_text
+        return draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, color, anchor)
+    else:
+        # Không có markdown, dùng cách cũ nhưng FIXED anchor
+        lines, total_height = wrap_text_to_fit_width(text, regular_font, max_width)
+        draw = ImageDraw.Draw(image)
+        
+        # Điều chỉnh y dựa trên anchor - FIXED LOGIC
+        if anchor == "mt":
+            # Với "mt", text được căn giữa theo chiều ngang tại x
+            start_y = y
+        elif anchor == "lt":
+            start_y = y
+        else:
+            start_y = y - total_height / 2
+        
+        line_height = draw.textbbox((0, 0), "Aa", font=regular_font)[3] * 1.2
+        
+        for i, line in enumerate(lines):
+            line_y = start_y + (i * line_height)
+            # FIXED: Sử dụng đúng anchor được truyền vào
+            draw.text((x, line_y), line, fill=color, font=regular_font, anchor=anchor)
+        
+        return image, total_height
+    
 # ==============================================================================
 # --- HÀM CHÍNH ---
 # ==============================================================================
@@ -312,26 +358,41 @@ def paste_emoji_image(base_img, emoji_char, pos, size, emoji_dir):
     return base_img
 
 def add_data_for_opening(image_to_draw_on, data, font_dir):
+    """UPDATED: Giữ nguyên layout gốc nhưng hỗ trợ markdown"""
     title_text = data['title']
-    font_for_title = load_font(font_dir, "NotoSans-Bold.ttf", 150)
-    draw = ImageDraw.Draw(image_to_draw_on)
+    font_regular = load_font(font_dir, "NotoSans-Regular.ttf", 150)
+    font_bold = load_font(font_dir, "NotoSans-Bold.ttf", 150)
+    
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
     text_position_x = image_to_draw_on.width / 2
     text_position_y = 450
     max_width = 2000
-    text_lines, total_height = wrap_text_to_fit_width(title_text, font_for_title, max_width)
-    start_y = text_position_y - (total_height / 2)
-    line_height = draw.textbbox((0, 0), "Aa", font_for_title)[3] * 1.2
-    for i, line in enumerate(text_lines):
-        line_y = start_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="mt")
+    
+    # Sử dụng hàm mixed để tự động detect markdown
+    image_to_draw_on, _ = draw_mixed_text_with_markdown(
+        image_to_draw_on, title_text, text_position_x, text_position_y,
+        font_regular, font_bold, max_width, color="black", anchor="mt"
+    )
+    
     return image_to_draw_on
 
 def add_data_for_definition(image_to_draw_on, data, font_dir):
+    """UPDATED: Giữ nguyên layout gốc nhưng hỗ trợ markdown"""
     definition_text = data.get('definition', '')
     term = data.get('term', '')
     
-    font_for_term = load_font(font_dir, "NotoSans-Bold.ttf", 100)
-    font_for_definition = load_font(font_dir, "NotoSans-Regular.ttf", 60)
+    font_term_regular = load_font(font_dir, "NotoSans-Regular.ttf", 100)
+    font_term_bold = load_font(font_dir, "NotoSans-Bold.ttf", 100)
+    font_def_regular = load_font(font_dir, "NotoSans-Regular.ttf", 60)
+    font_def_bold = load_font(font_dir, "NotoSans-Bold.ttf", 60)
+    
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
     draw = ImageDraw.Draw(image_to_draw_on)
 
     emoji_char = data.get('emoji', '😀')
@@ -341,67 +402,110 @@ def add_data_for_definition(image_to_draw_on, data, font_dir):
     emoji_y = int(image_to_draw_on.height / 2 - 300)
     image_to_draw_on = paste_emoji_image(image_to_draw_on, emoji_char, (emoji_x, emoji_y), emoji_size, emoji_dir)
 
+    # Term với markdown support
     term_x = 250
     term_y = 300
-    draw.text((term_x, term_y), term, fill="black", font=font_for_term, anchor="lt")
+    max_width_term = 1400
+    image_to_draw_on, _ = draw_mixed_text_with_markdown(
+        image_to_draw_on, term, term_x, term_y,
+        font_term_regular, font_term_bold, max_width_term, color="black", anchor="lt"
+    )
 
+    # Definition với markdown support  
     def_x = 250
     def_y = 500
-    max_width = 1400
-    def_lines, _ = wrap_text_to_fit_width(definition_text, font_for_definition, max_width)
-    line_height = draw.textbbox((0, 0), "Aa", font_for_definition)[3] * 1.3
-    
-    for i, line in enumerate(def_lines):
-        line_y = def_y + (i * line_height)
-        draw.text((def_x, line_y), line, fill="black", font=font_for_definition, anchor="lt")
+    max_width_def = 1400
+    image_to_draw_on, _ = draw_mixed_text_with_markdown(
+        image_to_draw_on, definition_text, def_x, def_y,
+        font_def_regular, font_def_bold, max_width_def, color="black", anchor="lt"
+    )
     
     return image_to_draw_on
 
 def add_data_for_chapter(image_to_draw_on, data, font_dir):
+    """UPDATED: Giữ nguyên layout gốc nhưng hỗ trợ markdown"""
     title_text = data['title']
-    font_for_title = load_font(font_dir, "NotoSans-Bold.ttf", 180)
-    draw = ImageDraw.Draw(image_to_draw_on)
+    font_regular = load_font(font_dir, "NotoSans-Regular.ttf", 180)
+    font_bold = load_font(font_dir, "NotoSans-Bold.ttf", 180)
+    
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
     text_position_x = image_to_draw_on.width / 2 - image_to_draw_on.width / 6
     text_position_y = image_to_draw_on.height / 2
     max_width = 1500
-    text_lines, total_height = wrap_text_to_fit_width(title_text, font_for_title, max_width)
+    
+    # Điều chỉnh start_y như code gốc
+    lines_temp, total_height = wrap_text_to_fit_width(title_text.replace('**', ''), font_regular, max_width)
     start_y = text_position_y - (total_height / 2 - 50)
-    line_height = draw.textbbox((0, 0), "Aa", font_for_title)[3] * 1.2
-    for i, line in enumerate(text_lines):
-        line_y = start_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="lt")
+    
+    image_to_draw_on, _ = draw_mixed_text_with_markdown(
+        image_to_draw_on, title_text, text_position_x, start_y,
+        font_regular, font_bold, max_width, color="black", anchor="lt"
+    )
+    
     return image_to_draw_on
 
 def add_data_for_quote(image_to_draw_on, data, font_dir):
+    """UPDATED: Giữ nguyên layout gốc nhưng hỗ trợ markdown"""
     title_text = data['title']
-    font_for_title = load_font(font_dir, "NotoSans-Regular.ttf", 120)
-    draw = ImageDraw.Draw(image_to_draw_on)
+    font_regular = load_font(font_dir, "NotoSans-Regular.ttf", 120)
+    font_bold = load_font(font_dir, "NotoSans-Bold.ttf", 120)
+    
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
     text_position_x = image_to_draw_on.width / 4
     text_position_y = 390
     max_width = 1500
-    text_lines, total_height = wrap_text_to_fit_width(title_text, font_for_title, max_width)
-    start_y = text_position_y
-    line_height = draw.textbbox((0, 0), "Aa", font_for_title)[3] * 1.2
-    for i, line in enumerate(text_lines):
-        line_y = start_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="lt")
+    
+    image_to_draw_on, _ = draw_mixed_text_with_markdown(
+        image_to_draw_on, title_text, text_position_x, text_position_y,
+        font_regular, font_bold, max_width, color="black", anchor="lt"
+    )
+    
     return image_to_draw_on
 
 def add_data_for_question(image_to_draw_on, data, font_dir):
+    """FIXED: Căn giữa text đúng cách"""
     title_text = data['title']
-    font_for_title = load_font(font_dir, "NotoSans-Bold.ttf", 150)
-    draw = ImageDraw.Draw(image_to_draw_on)
-    text_position_x = image_to_draw_on.width / 2
+    font_regular = load_font(font_dir, "NotoSans-Regular.ttf", 150) 
+    font_bold = load_font(font_dir, "NotoSans-Bold.ttf", 150)
+    
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
+    text_position_x = image_to_draw_on.width / 2  # Vị trí giữa theo chiều ngang
     text_position_y = 450
     max_width = 2000
-    text_lines,_ = wrap_text_to_fit_width(title_text, font_for_title, max_width)
-    line_height = draw.textbbox((0, 0), "Aa", font_for_title)[3] * 1.2
-    for i, line in enumerate(text_lines):
-        line_y = text_position_y + (i * line_height)
-        draw.text((text_position_x, line_y), line, fill="black", font=font_for_title, anchor="mt")
+    
+    # Kiểm tra có markdown không
+    if '**' in title_text:
+        # Có markdown - sử dụng hàm draw_markdown_text
+        image_to_draw_on, _ = draw_markdown_text(
+            image_to_draw_on, title_text, text_position_x, text_position_y,
+            font_regular, font_bold, max_width, color="black", anchor="mt"
+        )
+    else:
+        # Không có markdown - vẽ text thường và căn giữa thủ công
+        lines, total_height = wrap_text_to_fit_width(title_text, font_regular, max_width)
+        draw = ImageDraw.Draw(image_to_draw_on)
+        
+        line_height = draw.textbbox((0, 0), "Aa", font=font_regular)[3] * 1.2
+        start_y = text_position_y
+        
+        for i, line in enumerate(lines):
+            line_y = start_y + (i * line_height)
+            # Căn giữa từng dòng
+            draw.text((text_position_x, line_y), line, fill="black", font=font_regular, anchor="mt")
+    
     return image_to_draw_on
 
 def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
+    """UPDATED: Giữ nguyên layout gốc nhưng hỗ trợ markdown"""
     left_data = data.get('left', {})
     right_data = data.get('right', {})
 
@@ -429,7 +533,7 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     # Sử dụng hàm draw_markdown_text với nền màu vàng
     image_to_draw_on, _ = draw_markdown_text(image_to_draw_on, left_content_text, content_x_left, content_y_left, 
                       font_regular, font_bold, max_width_left, color="black", anchor="lt",
-                      bold_bg_color=(255, 255, 0, 200), border_radius=8)
+                      bold_bg_color=(239, 209, 0, 255), border_radius=20)
 
     # Right side
     right_emoji_char = right_data.get('emoji', '😀')
@@ -446,7 +550,7 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     # Sử dụng hàm draw_markdown_text với nền màu vàng
     image_to_draw_on, _ = draw_markdown_text(image_to_draw_on, right_content_text, content_x_right, content_y_right, 
                       font_regular, font_bold, max_width_right, color="black", anchor="lt",
-                      bold_bg_color=(255, 255, 0, 200), border_radius=8)
+                      bold_bg_color=(239, 209, 0, 255), border_radius=20)
 
     return image_to_draw_on
 
@@ -515,33 +619,33 @@ if __name__ == "__main__":
         {
             "template": "chapter.png",
             "data": {
-                "title": "Giới thiệu về Computer Vision",
+                "title": "Giới thiệu về **Computer Vision**",
             }
         },
         {
             "template": "definition.png",
             "data": {
                 "emoji": "😀",
-                "term": "Nội dung",
-                "definition": "định nghĩa bla bla "
+                "term": "**Computer Vision**",
+                "definition": "là lĩnh vực **khoa học máy tính** nghiên cứu cách làm cho máy tính có thể **nhìn và hiểu** nội dung của hình ảnh và video"
             }
         },
         {
             "template": "chapter.png",
             "data": {
-                "title": "Các kỹ thuật",
+                "title": "Các **kỹ thuật** phổ biến",
             }
         },
         {
             "template": "quote.png",
             "data": {
-                "title": "The task is to build a CNN model to classify handwritten images into the digits 0 through 9.",
+                "title": "The task is to build a **CNN model** to classify handwritten images into the digits **0 through 9**.",
             }
         },
         {
             "template": "question.png",
             "data": {
-                "title": "Làm thế nào để cải thiện độ chính xác của mô hình CNN?",
+                "title": "Làm thế nào để cải thiện **độ chính xác** của mô hình CNN?",
             }
         },
         {
@@ -549,7 +653,7 @@ if __name__ == "__main__":
             "data": {
                 "left": {
                     "emoji": "🔢",
-                    "content": "**Vòng lặp for:** Use when the number of repetitions is **known,**"
+                    "content": "**Vòng lặp for:** Use when the number of repetitions is **known**"
                 },
                 "right": {
                     "emoji": "🧐",
