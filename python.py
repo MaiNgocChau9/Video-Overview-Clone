@@ -96,35 +96,67 @@ def wrap_markdown_text_to_fit_width(text, regular_font, bold_font, max_width):
     """
     Wrap text có markdown bold để fit trong width
     Trả về list các dòng, mỗi dòng là list các tuple (text, is_bold)
+    FIXED: Giữ nguyên các cụm từ bold không bị tách rời
     """
-    words_with_format = []
-    
-    # Tách text thành các từ nhưng giữ lại thông tin bold
+    # Parse text thành các phần (text, is_bold)
     parts = parse_markdown_text(text)
-    for part_text, is_bold in parts:
-        words = part_text.split()
-        for word in words:
-            words_with_format.append((word, is_bold))
     
     lines = []
     current_line = []
     current_width = 0
     
-    for word, is_bold in words_with_format:
+    for part_text, is_bold in parts:
         font_to_use = bold_font if is_bold else regular_font
-        word_width = get_text_width(word, font_to_use)
-        space_width = get_text_width(" ", font_to_use)
         
-        # Tính width của từ + khoảng trắng (trừ từ cuối dòng)
-        total_word_width = word_width + (space_width if current_line else 0)
-        
-        if current_width + total_word_width <= max_width or not current_line:
-            current_line.append((word, is_bold))
-            current_width += total_word_width
+        # Nếu là bold text, cố gắng giữ nguyên cả cụm
+        if is_bold:
+            part_width = get_text_width(part_text, font_to_use)
+            space_width = get_text_width(" ", font_to_use) if current_line else 0
+            
+            # Nếu cả cụm bold fit được trong dòng hiện tại
+            if current_width + space_width + part_width <= max_width or not current_line:
+                current_line.append((part_text, is_bold))
+                current_width += space_width + part_width
+            else:
+                # Nếu không fit, xuống dòng mới
+                if current_line:
+                    lines.append(current_line)
+                
+                # Kiểm tra cụm bold có fit trong một dòng không
+                if part_width <= max_width:
+                    current_line = [(part_text, is_bold)]
+                    current_width = part_width
+                else:
+                    # Nếu cụm bold quá dài, mới tách thành từng từ
+                    words = part_text.split()
+                    current_line = []
+                    current_width = 0
+                    
+                    for word in words:
+                        word_width = get_text_width(word, font_to_use)
+                        space_width = get_text_width(" ", font_to_use) if current_line else 0
+                        
+                        if current_width + space_width + word_width <= max_width or not current_line:
+                            current_line.append((word, is_bold))
+                            current_width += space_width + word_width
+                        else:
+                            lines.append(current_line)
+                            current_line = [(word, is_bold)]
+                            current_width = word_width
         else:
-            lines.append(current_line)
-            current_line = [(word, is_bold)]
-            current_width = word_width
+            # Với text thường, tách theo từ như cũ
+            words = part_text.split()
+            for word in words:
+                word_width = get_text_width(word, font_to_use)
+                space_width = get_text_width(" ", font_to_use) if current_line else 0
+                
+                if current_width + space_width + word_width <= max_width or not current_line:
+                    current_line.append((word, is_bold))
+                    current_width += space_width + word_width
+                else:
+                    lines.append(current_line)
+                    current_line = [(word, is_bold)]
+                    current_width = word_width
     
     if current_line:
         lines.append(current_line)
@@ -132,9 +164,10 @@ def wrap_markdown_text_to_fit_width(text, regular_font, bold_font, max_width):
     return lines
 
 def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, color="black", anchor="lt", 
-                      bold_bg_color=(255, 255, 0, 200), border_radius=8):
+                      bold_bg_color=(255, 255, 0, 200), border_radius=20):
     """
     Vẽ text có markdown bold lên image với nền màu vàng cho text bold
+    FIXED: Vẽ background liền nhau cho cả cụm bold
     """
     lines = wrap_markdown_text_to_fit_width(text, regular_font, bold_font, max_width)
     line_height = max(get_text_height("Aa", regular_font), get_text_height("Aa", bold_font)) * 1.3
@@ -150,8 +183,9 @@ def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, co
         start_y = y - total_height / 2
     
     # Padding cho background
-    bg_padding_x = 8
-    bg_padding_y = 4
+    bg_padding_x = 12  # Tăng trái phải
+    bg_padding_y_top = 20  # Padding phía trên
+    bg_padding_y_bottom = 0  # Giảm padding phía dưới
     
     # Đảm bảo image ở chế độ RGBA
     if image.mode != 'RGBA':
@@ -163,18 +197,41 @@ def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, co
         current_x = x
         line_y = start_y + (line_idx * line_height)
         
-        for word_idx, (word, is_bold) in enumerate(line):
-            font_to_use = bold_font if is_bold else regular_font
-            word_width = get_text_width(word, font_to_use)
-            word_height = get_text_height(word, font_to_use)
+        # Nhóm các từ liên tiếp cùng định dạng (bold/normal)
+        grouped_parts = []
+        if line:
+            current_group = [line[0]]
+            current_is_bold = line[0][1]
             
-            # Vẽ background màu vàng cho text bold
+            for word, is_bold in line[1:]:
+                if is_bold == current_is_bold:
+                    current_group.append((word, is_bold))
+                else:
+                    grouped_parts.append(current_group)
+                    current_group = [(word, is_bold)]
+                    current_is_bold = is_bold
+            
+            grouped_parts.append(current_group)
+        
+        # Vẽ từng nhóm
+        for group in grouped_parts:
+            if not group:
+                continue
+                
+            is_bold = group[0][1]
+            font_to_use = bold_font if is_bold else regular_font
+            
+            # Tạo text từ nhóm các từ
+            group_text = " ".join(word for word, _ in group)
+            group_width = get_text_width(group_text, font_to_use)
+            group_height = get_text_height(group_text, font_to_use)
+            
+            # Vẽ background cho cả nhóm nếu là bold
             if is_bold:
-                # Tính toạ độ background
                 bg_x1 = int(current_x - bg_padding_x)
-                bg_y1 = int(line_y - bg_padding_y)
-                bg_x2 = int(current_x + word_width + bg_padding_x)
-                bg_y2 = int(line_y + word_height + bg_padding_y)
+                bg_y1 = int(line_y - bg_padding_y_top)  # Dùng padding top
+                bg_x2 = int(current_x + group_width + bg_padding_x)
+                bg_y2 = int(line_y + group_height + bg_padding_y_bottom)  # Dùng padding bottom
                 
                 # Tạo layer tạm cho background
                 overlay = Image.new('RGBA', image.size, (0, 0, 0, 0))
@@ -186,16 +243,14 @@ def draw_markdown_text(image, text, x, y, regular_font, bold_font, max_width, co
                 
                 # Blend overlay vào image chính
                 image = Image.alpha_composite(image, overlay)
-                
-                # Tạo lại draw object sau khi blend
                 draw = ImageDraw.Draw(image)
             
-            # Vẽ từ
-            draw.text((current_x, line_y), word, fill=color, font=font_to_use, anchor="lt")
-            current_x += word_width
+            # Vẽ text của nhóm
+            draw.text((current_x, line_y), group_text, fill=color, font=font_to_use, anchor="lt")
+            current_x += group_width
             
-            # Thêm khoảng trắng nếu không phải từ cuối cùng
-            if word_idx < len(line) - 1:
+            # Thêm khoảng trắng giữa các nhóm
+            if group != grouped_parts[-1]:  # Không phải nhóm cuối
                 space_width = get_text_width(" ", font_to_use)
                 current_x += space_width
     
