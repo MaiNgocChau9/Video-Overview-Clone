@@ -374,7 +374,7 @@ def add_data_for_opening(image_to_draw_on, data, font_dir):
     # Sử dụng hàm mixed để tự động detect markdown
     image_to_draw_on, _ = draw_mixed_text_with_markdown(
         image_to_draw_on, title_text, text_position_x, text_position_y,
-        font_regular, font_bold, max_width, color="black", anchor="mt"
+        font_bold, font_bold, max_width, color="black", anchor="mt"
     )
     
     return image_to_draw_on
