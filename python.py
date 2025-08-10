@@ -554,6 +554,62 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
 
     return image_to_draw_on
 
+def add_data_for_blank(image_to_draw_on, data, font_dir):
+    """
+    Template blank: Có title và content (list hoặc plain text)
+    Hỗ trợ markdown highlight
+    """
+    title_text = data.get('title', '')
+    content_data = data.get('content', '')
+
+    # Font
+    font_title_regular = load_font(font_dir, "NotoSans-Regular.ttf", 120)
+    font_title_bold = load_font(font_dir, "NotoSans-Bold.ttf", 120)
+    font_content_regular = load_font(font_dir, "NotoSans-Regular.ttf", 70)
+    font_content_bold = load_font(font_dir, "NotoSans-Bold.ttf", 70)
+
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+
+    # --- Vẽ Title ---
+    title_x = 200
+    title_y = 300
+    max_width_title = 2000
+
+    image_to_draw_on, title_height = draw_mixed_text_with_markdown(
+        image_to_draw_on, title_text, title_x, title_y,
+        font_title_bold, font_title_bold, max_width_title,
+        color="black", anchor="lt"
+    )
+
+    # --- Vẽ Content ---
+    content_start_y = title_y + title_height + 100
+    content_x = 200
+    max_width_content = image_to_draw_on.width - 400
+
+    if isinstance(content_data, list):
+        # Content dạng list
+        current_y = content_start_y
+        for idx, item in enumerate(content_data, start=1):
+            # Bạn có thể đổi "•" thành f"{idx}." nếu muốn số thứ tự
+            line_text = f"• {item}"
+            image_to_draw_on, line_height = draw_mixed_text_with_markdown(
+                image_to_draw_on, line_text, content_x, current_y,
+                font_content_regular, font_content_bold, max_width_content,
+                color="black", anchor="lt"
+            )
+            current_y += line_height + 20
+    else:
+        # Content dạng plain text
+        image_to_draw_on, _ = draw_mixed_text_with_markdown(
+            image_to_draw_on, str(content_data), content_x, content_start_y,
+            font_content_regular, font_content_bold, max_width_content,
+            color="black", anchor="lt"
+        )
+
+    return image_to_draw_on
+
 # ==============================================================================
 # --- XỬ LÝ SLIDE ---
 # ==============================================================================
@@ -591,6 +647,8 @@ def process_slide(template_file, data, template_dir, font_dir, output_dir, rando
         final_image = add_data_for_question(image_with_background, data, font_dir)
     elif template_name_no_ext == "side_by_side":
         final_image = add_data_for_side_by_side(image_with_background, data, font_dir)
+    elif template_name_no_ext == "blank":
+        final_image = add_data_for_blank(image_with_background, data, font_dir)
     else:
         final_image = image_with_background
 
@@ -659,6 +717,17 @@ if __name__ == "__main__":
                     "emoji": "🧐",
                     "content": "**Vòng lặp while**: Use when the number of repetitions is **unknown**"
                 }
+            }
+        },
+        {
+            "template": "blank.png",
+            "data": {
+                "title": "Các thư viện phổ biến",
+                "content": [
+                    "**OpenCV**: Thư viện mã nguồn mở mạnh mẽ cho xử lý ảnh và video.",
+                    "**PIL/Pillow**: Thư viện Python để làm việc với hình ảnh.",
+                    "**TensorFlow/Keras**: Thư viện học sâu hỗ trợ xây dựng mô hình CNN."
+                ]
             }
         },
     ]
