@@ -356,6 +356,8 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     # Chuyển đổi image sang RGBA để hỗ trợ alpha blending
     if image_to_draw_on.mode != 'RGBA':
         image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
+    draw = ImageDraw.Draw(image_to_draw_on)
 
     # Left side
     left_emoji_char = left_data.get('emoji', '😀')
@@ -372,7 +374,7 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     max_width_left = 950  # Giới hạn width cho cột trái
     
     # Sử dụng hàm draw_markdown_text với nền màu vàng
-    image_to_draw_on, _ = draw_markdown_text(image_to_draw_on, left_content_text, content_x_left, content_y_left, 
+    draw_markdown_text(draw, left_content_text, content_x_left, content_y_left, 
                       font_regular, font_bold, max_width_left, color="black", anchor="lt",
                       bold_bg_color=(255, 255, 0, 200), border_radius=8)
 
@@ -389,7 +391,7 @@ def add_data_for_side_by_side(image_to_draw_on, data, font_dir):
     max_width_right = 950  # Giới hạn width cho cột phải
     
     # Sử dụng hàm draw_markdown_text với nền màu vàng
-    image_to_draw_on, _ = draw_markdown_text(image_to_draw_on, right_content_text, content_x_right, content_y_right, 
+    draw_markdown_text(draw, right_content_text, content_x_right, content_y_right, 
                       font_regular, font_bold, max_width_right, color="black", anchor="lt",
                       bold_bg_color=(255, 255, 0, 200), border_radius=8)
 
