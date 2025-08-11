@@ -610,14 +610,17 @@ def add_data_for_blank(image_to_draw_on, data, font_dir):
 
     return image_to_draw_on
 
+# Thêm biến đếm toàn cục cho text_with_emoji (giống như chapter_count)
+text_with_emoji_count = 0
+
 def add_data_for_text_with_emoji(image_to_draw_on, data, font_dir, emoji_dir="emojis"):
     """
-    Template: Văn bản ở giữa, emoji ở góc trên trái & dưới phải.
-    - data: {
-        'text': str,
-        'emoji_chars': ['😀', '🔥'] hoặc ['😀'] 
-      }
+    Template: Văn bản ở giữa, emoji ở góc.
+    Luân phiên vị trí: lần lẻ trên trái & dưới phải, lần chẵn trên phải & dưới trái
     """
+    global text_with_emoji_count
+    text_with_emoji_count += 1
+    
     # Load font
     font_text_regular = load_font(font_dir, "NotoSans-Regular.ttf", 130)
     font_text_bold = load_font(font_dir, "NotoSans-Bold.ttf", 130)
@@ -640,11 +643,19 @@ def add_data_for_text_with_emoji(image_to_draw_on, data, font_dir, emoji_dir="em
         # Tạo ảnh tạm để xoay
         tmp_img = Image.new("RGBA", image_to_draw_on.size, (0, 0, 0, 0))
         
-        # Chọn vị trí
-        if idx == 0:  # Trái trên
-            pos = (100, 100)
-        else:  # Phải dưới
-            pos = (2200, 1100)
+        # Chọn vị trí dựa trên số lần đã dùng
+        if text_with_emoji_count % 2 == 1:
+            # Lần lẻ (1, 3, 5...): trái trên - phải dưới
+            if idx == 0:  # Trái trên
+                pos = (100, 100)
+            else:  # Phải dưới
+                pos = (2200, 1100)
+        else:
+            # Lần chẵn (2, 4, 6...): phải trên - trái dưới
+            if idx == 0:  # Phải trên
+                pos = (2200, 100)
+            else:  # Trái dưới
+                pos = (100, 1100)
 
         # Dán emoji vào ảnh tạm
         paste_emoji_image(tmp_img, char, pos, emoji_size, emoji_dir)
@@ -669,6 +680,167 @@ def add_data_for_text_with_emoji(image_to_draw_on, data, font_dir, emoji_dir="em
         color="black", anchor="lt"
     )
 
+    return image_to_draw_on
+
+def add_data_for_3_steps(image_to_draw_on, data, font_dir):
+    """
+    Template 3_steps: Title tổng + 3 bước với vị trí cố định trong code
+    - Main title: ở trên cùng bên trái (vị trí cố định)
+    - Steps: 3 vị trí cố định trong code
+    """
+    # Main title và steps data
+    main_title = data.get('title', '')
+    steps_data = data.get('steps', [])
+    
+    # Font
+    font_main_title = load_font(font_dir, "NotoSans-Bold.ttf", 100)  # Main title
+    font_step_title = load_font(font_dir, "NotoSans-Bold.ttf", 80)   # Step title in hoa
+    font_content = load_font(font_dir, "NotoSans-Regular.ttf", 50)   # Content in thường
+    
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
+    draw = ImageDraw.Draw(image_to_draw_on)
+    
+    # === VỊ TRÍ CỐ ĐỊNH ===
+    # Main title position
+    main_title_x = 100
+    main_title_y = 100
+    main_title_max_width = 2000
+    
+    # 3 step positions (cố định trong code)
+    step_positions = [
+        {"x": 310, "y": 655, "max_width": 600},    # Step 1: Trái
+        {"x": 1060, "y": 655, "max_width": 600},   # Step 2: Giữa  
+        {"x": 1810, "y": 655, "max_width": 500}    # Step 3: Phải
+    ]
+    
+    # === Vẽ Main Title (trên cùng bên trái) ===
+    if main_title:
+        title_lines, _ = wrap_text_to_fit_width(main_title, font_main_title, main_title_max_width)
+        current_y = main_title_y
+        
+        for line in title_lines:
+            draw.text((main_title_x, current_y), line, fill="black", font=font_main_title, anchor="lt")
+            current_y += get_text_height(line, font_main_title) * 1.3
+    
+    # === Vẽ từng Step với vị trí cố định ===
+    for i, step in enumerate(steps_data[:3]):  # Chỉ lấy tối đa 3 step
+        if i >= len(step_positions):
+            break
+            
+        pos = step_positions[i]
+        step_x = pos["x"]
+        step_y = pos["y"]
+        max_width = pos["max_width"]
+        
+        # Step title (in hoa)
+        step_title = step.get('title', '')
+        if step_title:
+            title_lines, _ = wrap_text_to_fit_width(step_title, font_step_title, max_width)
+            current_y = step_y
+            
+            for line in title_lines:
+                draw.text((step_x, current_y), line, fill="black", font=font_step_title, anchor="lt")
+                current_y += get_text_height(line, font_step_title) * 1.3
+            
+            # Vị trí cho content (cách title một khoảng)
+            content_y = current_y-30
+        else:
+            content_y = step_y
+        
+        # Step content (in thường)
+        step_content = step.get('content', '')
+        if step_content:
+            content_lines, _ = wrap_text_to_fit_width(step_content, font_content, max_width)
+            current_content_y = content_y
+            
+            for line in content_lines:
+                draw.text((step_x, current_content_y), line, fill="black", font=font_content, anchor="lt")
+                current_content_y += get_text_height(line, font_content) * 1.3
+    
+    return image_to_draw_on
+
+def add_data_for_4_steps(image_to_draw_on, data, font_dir):
+    """
+    Template 3_steps: Title tổng + 3 bước với vị trí cố định trong code
+    - Main title: ở trên cùng bên trái (vị trí cố định)
+    - Steps: 3 vị trí cố định trong code
+    """
+    # Main title và steps data
+    main_title = data.get('title', '')
+    steps_data = data.get('steps', [])
+    
+    # Font
+    font_main_title = load_font(font_dir, "NotoSans-Bold.ttf", 100)  # Main title
+    font_step_title = load_font(font_dir, "NotoSans-Bold.ttf", 80)   # Step title in hoa
+    font_content = load_font(font_dir, "NotoSans-Regular.ttf", 50)   # Content in thường
+    
+    # Chuyển đổi sang RGBA nếu cần
+    if image_to_draw_on.mode != 'RGBA':
+        image_to_draw_on = image_to_draw_on.convert('RGBA')
+    
+    draw = ImageDraw.Draw(image_to_draw_on)
+    
+    # === VỊ TRÍ CỐ ĐỊNH ===
+    # Main title position
+    main_title_x = 100
+    main_title_y = 100
+    main_title_max_width = 2000
+    
+    # 3 step positions (cố định trong code)
+    step_positions = [
+        {"x": 60, "y": 655, "max_width": 600},
+        {"x": 740, "y": 655, "max_width": 600},
+        {"x": 1420, "y": 655, "max_width": 500},
+        {"x": 2100, "y": 655, "max_width": 500}
+    ]
+    
+    # === Vẽ Main Title (trên cùng bên trái) ===
+    if main_title:
+        title_lines, _ = wrap_text_to_fit_width(main_title, font_main_title, main_title_max_width)
+        current_y = main_title_y
+        
+        for line in title_lines:
+            draw.text((main_title_x, current_y), line, fill="black", font=font_main_title, anchor="lt")
+            current_y += get_text_height(line, font_main_title) * 1.3
+    
+    # === Vẽ từng Step với vị trí cố định ===
+    for i, step in enumerate(steps_data[:4]):  # Chỉ lấy tối đa 3 step
+        if i >= len(step_positions):
+            break
+            
+        pos = step_positions[i]
+        step_x = pos["x"]
+        step_y = pos["y"]
+        max_width = pos["max_width"]
+        
+        # Step title (in hoa)
+        step_title = step.get('title', '')
+        if step_title:
+            title_lines, _ = wrap_text_to_fit_width(step_title, font_step_title, max_width)
+            current_y = step_y
+            
+            for line in title_lines:
+                draw.text((step_x, current_y), line, fill="black", font=font_step_title, anchor="lt")
+                current_y += get_text_height(line, font_step_title) * 1.3
+            
+            # Vị trí cho content (cách title một khoảng)
+            content_y = current_y-30
+        else:
+            content_y = step_y
+        
+        # Step content (in thường)
+        step_content = step.get('content', '')
+        if step_content:
+            content_lines, _ = wrap_text_to_fit_width(step_content, font_content, max_width)
+            current_content_y = content_y
+            
+            for line in content_lines:
+                draw.text((step_x, current_content_y), line, fill="black", font=font_content, anchor="lt")
+                current_content_y += get_text_height(line, font_content) * 1.3
+    
     return image_to_draw_on
 
 # ==============================================================================
@@ -712,6 +884,10 @@ def process_slide(template_file, data, template_dir, font_dir, output_dir, rando
         final_image = add_data_for_blank(image_with_background, data, font_dir)
     elif template_name_no_ext == "text_with_emoji":
         final_image = add_data_for_text_with_emoji(image_with_background, data, font_dir)
+    elif template_name_no_ext == "3_steps":
+        final_image = add_data_for_3_steps(image_with_background, data, font_dir)
+    elif template_name_no_ext == "4_steps":
+        final_image = add_data_for_4_steps(image_with_background, data, font_dir)
     else:
         final_image = image_with_background
 
@@ -732,72 +908,27 @@ if __name__ == "__main__":
 
     slides_data = [
         {
-            "template": "opening.png",
+            "template": "4_steps.png",
             "data": {
-                "title": "Computer Vision Overview",
-            }
-        },
-        {
-            "template": "chapter.png",
-            "data": {
-                "title": "Giới thiệu về **Computer Vision**",
-            }
-        },
-        {
-            "template": "definition.png",
-            "data": {
-                "emoji": "😀",
-                "term": "**Computer Vision**",
-                "definition": "là lĩnh vực **khoa học máy tính** nghiên cứu cách làm cho máy tính có thể **nhìn và hiểu** nội dung của hình ảnh và video"
-            }
-        },
-        {
-            "template": "chapter.png",
-            "data": {
-                "title": "Các **kỹ thuật** phổ biến",
-            }
-        },
-        {
-            "template": "quote.png",
-            "data": {
-                "title": "The task is to build a **CNN model** to classify handwritten images into the digits **0 through 9**.",
-            }
-        },
-        {
-            "template": "question.png",
-            "data": {
-                "title": "Làm thế nào để cải thiện **độ chính xác** của mô hình CNN?",
-            }
-        },
-        {
-            "template": "side_by_side.png",
-            "data": {
-                "left": {
-                    "emoji": "🔢",
-                    "content": "**Vòng lặp for:** Use when the number of repetitions is **known**"
-                },
-                "right": {
-                    "emoji": "🧐",
-                    "content": "**Vòng lặp while**: Use when the number of repetitions is **unknown**"
-                }
-            }
-        },
-        {
-            "template": "blank.png",
-            "data": {
-                "title": "Các thư viện phổ biến",
-                "content": [
-                    "**OpenCV**: Thư viện mã nguồn mở mạnh mẽ cho xử lý ảnh và video.",
-                    "**PIL/Pillow**: Thư viện Python để làm việc với hình ảnh.",
-                    "**TensorFlow/Keras**: Thư viện học sâu hỗ trợ xây dựng mô hình CNN."
+                "title": "Quy trình xử lý ảnh",
+                "steps": [
+                    {
+                        "title": "Bước 1",      # Sẽ tự động chuyển thành IN HOA
+                        "content": "Nội dung"   # Giữ nguyên in thường
+                    },
+                    {
+                        "title": "Bước 2",
+                        "content": "Nội dung"
+                    },
+                    {
+                        "title": "Bước 3",
+                        "content": "Nội dung"
+                    },
+                    {
+                        "title": "Bước 4",
+                        "content": "Nội dung"
+                    }
                 ]
-            }
-        },
-        {
-            "template": "text_with_emoji.png",
-            "data": {
-                "text": "Once data is **organized,** it can be visualized. This turns rows of text into a picture that **tells** a story.",
-                "emoji_chars": ["🤖", "😀"]
             }
         }
     ]
